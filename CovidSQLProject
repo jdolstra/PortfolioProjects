@@ -1,0 +1,105 @@
+-- In this query I am going to analyse covid in the Netherlands
+-- Analysing covid cases vs covid deaths 
+SELECT location, date, total_cases, total_deaths,(total_deaths/total_cases)*100 AS deathpercentage
+FROM TutorialDB.dbo.coviddeaths2
+ORDER BY 1,2
+
+-- likelyhood of dying if you get covid in your country
+SELECT location, date, total_cases, total_deaths,(total_deaths/total_cases)*100 AS deathpercentage
+FROM TutorialDB.dbo.coviddeaths2
+WHERE location LIKE '%Netherlands%'
+ORDER BY 1,2
+
+-- Total cases vs population
+SELECT location, date, total_cases, population,(total_cases/population)*100 AS InfectedPercentage
+FROM TutorialDB.dbo.coviddeaths2
+WHERE location LIKE '%Netherlands%'
+ORDER BY 1,2
+
+-- What country has the highest infection rate
+SELECT location, MAX(total_cases) AS HighestInfectionCount, population, MAX((total_cases/population))*100 AS InfectedPercentage
+FROM TutorialDB.dbo.coviddeaths2
+GROUP BY location, population
+ORDER BY InfectedPercentage DESC
+
+-- Showing countries which the highest death percentage
+SELECT location, MAX(total_deaths) as TotalDeathCount
+FROM TutorialDB.dbo.coviddeaths2
+WHERE continent is not NULL
+GROUP BY location
+ORDER BY TotalDeathCount DESC
+
+-- Showing the continents with the highest death rate
+SELECT location, MAX(total_deaths) as TotalDeathCount
+FROM TutorialDB.dbo.coviddeaths2
+WHERE continent is NULL
+GROUP BY location
+ORDER BY TotalDeathCount DESC
+
+-- Global numbers 
+SELECT date, SUM(new_cases) AS totaldaycases, SUM(new_deaths) AS NewDeaths, SUM(new_deaths)/SUM(new_cases)*100 AS DeathPercentage
+FROM TutorialDB.dbo.coviddeaths2
+WHERE continent is not NULL 
+GROUP BY date 
+ORDER BY 1,2
+
+-- Total number of deaths & cases
+SELECT SUM(new_cases) AS totaldaycases, SUM(new_deaths) AS NewDeaths, SUM(new_deaths)/SUM(new_cases)*100 AS DeathPercentage
+FROM TutorialDB.dbo.coviddeaths2
+WHERE continent is not NULL 
+ORDER BY 1,2
+
+-- Join the Death and Vaccination databases together 
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, SUM(CONVERT(bigint,vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingVacCount
+FROM TutorialDB.dbo.coviddeaths2 dea 
+JOIN TutorialDB.dbo.covidvaccinations vac
+    ON dea.location = vac.location 
+    AND dea.date = vac.date 
+WHERE dea.continent is not NULL
+ORDER BY 2,3
+
+-- CTE
+
+WITH PopvsVac (continent, location, date, population,new_vaccinations, RollingVacCount)
+AS
+(
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, SUM(CONVERT(bigint,vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingVacCount
+FROM TutorialDB.dbo.coviddeaths2 dea
+JOIN TutorialDB.dbo.covidvaccinations vac
+    ON dea.location = vac.location 
+    AND dea.date = vac.date 
+WHERE dea.continent is not NULL 
+) 
+SELECT *, (RollingVacCount/population)*100
+FROM PopvsVac
+
+-- Temp table 
+
+CREATE TABLE #PercentPopulationVaccinated1
+(
+continent NVARCHAR(255),
+location NVARCHAR(255),
+date DATETIME,
+population numeric,
+new_vaccinations NUMERIC,
+RollingVacCount NUMERIC
+)
+
+INSERT INTO #PercentPopulationVaccinated
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations, SUM(CONVERT(bigint,vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingVacCount
+FROM TutorialDB.dbo.coviddeaths2 dea
+JOIN TutorialDB.dbo.covidvaccinations vac
+    ON dea.location = vac.location 
+    AND dea.date = vac.date 
+WHERE dea.continent is not NULL 
+
+SELECT * ,(RollingVacCount/population)*100
+FROM #PercentPopulationVaccinated
+
+-- Creating view to store data for visualisations
+
+CREATE VIEW TotalDeathsContinents AS
+SELECT date, SUM(new_cases) AS totaldaycases, SUM(new_deaths) AS NewDeaths, SUM(new_deaths)/SUM(new_cases)*100 AS DeathPercentage
+FROM TutorialDB.dbo.coviddeaths2
+WHERE continent is not NULL 
+GROUP BY date 
